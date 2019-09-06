@@ -1,0 +1,23 @@
+<!doctype html>
+<html>
+  <body>
+    <h2>List of Docker Swarm services</h2>
+    
+    <table border = 1>
+    {% for service in services %}
+    <tr>
+      <td><a href="/logs/services/{{ service['id'] }}">{{ service['name'] }}</a></td>
+    </tr>
+    {% endfor %}
+    </table>
+
+    <h2>List of Docker Swarm containers</h2>
+    <table border = 1>
+    {% for container in containers %}
+    <tr>
+      <td><a href="/logs/containers/{{ container['id'] }}">{{ container['name'] }}</a></td>
+    </tr>
+    {% endfor %}
+    </table>
+  </body>
+</html>

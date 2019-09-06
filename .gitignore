@@ -1,0 +1,13 @@
+.DS_Store
+terraform.tfplan
+terraform.tfstate
+terraform.tfstate.backup
+./*.tfstate
+.terraform/
+*.log
+*.bak
+*~
+.*.swp
+.idea
+terraform.tfvars
+*.retry
