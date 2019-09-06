@@ -1,63 +1,57 @@
 from flask import Flask, request, render_template
-import requests_unixsocket
+import requests
 import json
+import os
+import urllib.parse
 
 app = Flask(__name__)
 
-docker_socket_path = 'http+unix://%2Fvar%2Frun%2Fdocker.sock'
+manager_ip = os.environ['MANAGER_IP']
+base_url = 'http://'+manager_ip+'/v1.40'
 
 @app.route('/')
 def main():
-    session = requests_unixsocket.Session()
-    resp = session.get(docker_socket_path+'/v1.40/containers/json')
-    assert resp.status_code == 200
 
-    data = resp.json()
-    containers = []
-    for element in data:
-        containers.append({'name': element['Names'][0][1:], 'id': element['Id'][:12]})
-
-    resp = session.get(docker_socket_path+'/v1.40/services')
-    assert resp.status_code == 200
-
+    resp = requests.get(base_url+'/services')
     data = resp.json()
     services = []
     for element in data:
-        services.append({'name': element['Spec']['Name'], 'id': element['ID']})
+        tasks = []
+        resp = requests.get(base_url+'/tasks?filters='+urllib.parse.quote(f"""{{"service":["{element['Spec']['Name']}"]}}""",safe=''))
+        data_tasks = resp.json()
+        for task in data_tasks:
+            tasks.append({'id': task['ID']})
+        services.append({'name': element['Spec']['Name'], 'id': element['ID'], 'tasks': tasks})
+        
+    return render_template('main.html',services=services)
 
-    return render_template('main.html',containers=containers,services=services)
+@app.route('/logs/<type>/<id>')
+def show_logs(type,id):
 
-@app.route('/logs/containers/<container_id>')
-def container_logs(container_id):
-   session = requests_unixsocket.Session()
+    if type == "service":
+      endpoint = "services"
+      resp = requests.get(base_url+'/'+endpoint+'/'+id)
+      service = resp.json()
 
-   resp = session.get(docker_socket_path+'/v1.40/containers/'+container_id+'/json')
-   assert resp.status_code == 200
-   container = resp.json()
-
-   if 'Name' in container:
-     resp = session.get(docker_socket_path+'/v1.40/containers/'+container_id+'/logs?stderr=1&stdout=1')
-     assert resp.status_code == 200
-     logs = resp.text
-     return render_template('logs.html',type='container',name=container['Name'][1:],logs=logs)
-   else:
-     return 'No container with id '+container_id+' found'
-
-@app.route('/logs/services/<service_id>')
-def service_logs(service_id):
-    session = requests_unixsocket.Session()
-
-    resp = session.get(docker_socket_path+'/v1.40/services/'+service_id)
-    assert resp.status_code == 200
-    service = resp.json()
-
-    if 'Spec' in service:
-        resp = session.get(docker_socket_path+'/v1.40/services/'+service_id+'/logs?stderr=1&stdout=1')
-        assert resp.status_code == 200
-        logs = resp.text
-        return render_template('logs.html',type='service',name=service['Spec']['Name'],logs=logs)
+      if 'Spec' not in service:
+        return 'No service with id '+id+' found'
+      else:
+        name = service['Spec']['Name']
+    elif type == "task":
+      endpoint = "tasks"
+      resp = requests.get(base_url+'/'+endpoint+'/'+id)
+      task = resp.json()
+      
+      if 'ID' not in task:
+        return 'No task with id '+id+' found'
+      else:
+        name = task['ID']
     else:
-        return 'No service with id '+service_id+' found'
+        return 'Unsupported operation'
+
+    resp = requests.get(base_url+'/'+endpoint+'/'+id+'/logs?stderr=1&stdout=1')
+    logs = resp.text
+    return render_template('logs.html',name=name,logs=logs,type=type)
 
 if __name__ == '__main__':
     app.run(host='0.0.0.0',port=8080,debug=True)
